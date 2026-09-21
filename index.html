@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CellTracker Pro — Rastreamento por Número</title>
+<meta name="description" content="SIMULAÇÃO de rastreamento por número de telefone. Use apenas em ambientes controlados.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#050807;
+    --panel:#0a0f0c;
+    --green:#39ff14;
+    --green-dim:#1d7a10;
+    --red:#ff3b3b;
+    --amber:#ffb000;
+    --text:#c8ffd0;
+    --muted:#5d8a63;
+    --border:#1a2f1d;
+    --mono:'VT323','Fira Code','Courier New',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    display:flex;flex-direction:column;align-items:center;
+    min-height:100vh;
+    padding:0 16px 40px;
+    overflow-x:hidden;
+  }
+  /* scanlines CRT */
+  body::after{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:99;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.22) 0 1px,transparent 1px 3px);
+    mix-blend-mode:multiply;
+  }
+  .wrap{width:100%;max-width:760px}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 0 10px;border-bottom:1px solid var(--border);
+  }
+  .logo{display:flex;align-items:center;gap:10px;font-size:1.5rem;color:var(--green);letter-spacing:2px;text-shadow:0 0 8px rgba(57,255,20,.45)}
+  .logo .sig{width:10px;height:10px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:blink 1.6s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .ver{color:var(--muted);font-size:.95rem}
+
+  .banner{
+    margin-top:14px;padding:10px 14px;
+    border:1px dashed var(--amber);color:var(--amber);
+    font-size:1.05rem;line-height:1.4;background:rgba(255,176,0,.05);
+  }
+  .banner b{letter-spacing:1px}
+
+  .card{
+    margin-top:18px;background:var(--panel);
+    border:1px solid var(--border);padding:22px;
+    box-shadow:0 0 0 1px #000,0 0 30px rgba(57,255,20,.06) inset;
+  }
+  .card h2{font-size:1.25rem;color:var(--green);letter-spacing:2px;margin-bottom:4px}
+  .card .sub{color:var(--muted);margin-bottom:16px;font-size:1rem}
+
+  .inputrow{display:flex;gap:10px;flex-wrap:wrap}
+  #phone{
+    flex:1;min-width:220px;background:#060a07;border:1px solid var(--green-dim);
+    color:var(--green);font-family:var(--mono);font-size:1.5rem;padding:10px 14px;
+    letter-spacing:2px;outline:none;caret-color:var(--green);
+  }
+  #phone:focus{border-color:var(--green);box-shadow:0 0 12px rgba(57,255,20,.25)}
+  #go{
+    background:var(--green);color:#032000;border:none;cursor:pointer;
+    font-family:var(--mono);font-size:1.15rem;font-weight:bold;letter-spacing:2px;
+    padding:10px 22px;transition:transform .05s;
+  }
+  #go:hover{background:#5aff3c}
+  #go:active{transform:scale(.97)}
+  .err{color:var(--red);margin-top:8px;min-height:1.2em;font-size:1rem}
+
+  /* terminal */
+  #term{
+    display:none;margin-top:18px;background:#030604;border:1px solid var(--border);
+    padding:14px;height:230px;overflow-y:auto;font-size:1.05rem;line-height:1.55;
+  }
+  #term .l{white-space:pre-wrap;word-break:break-all}
+  #term .ok{color:var(--green)}
+  #term .wait{color:var(--amber)}
+  #term .dim{color:var(--muted)}
+  #term .cur{animation:blink 1s infinite}
+
+  .progress{display:none;margin-top:12px;border:1px solid var(--border);height:22px;position:relative;background:#030604}
+  .progress .fill{height:100%;width:0%;background:linear-gradient(90deg,var(--green-dim),var(--green));box-shadow:0 0 14px rgba(57,255,20,.5)}
+  .progress .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#032000;font-weight:bold;letter-spacing:2px;mix-blend-mode:normal;font-size:.95rem;color:var(--text);text-shadow:0 0 4px #000}
+
+  /* radar/map */
+  #mapwrap{display:none;margin-top:18px;position:relative;border:1px solid var(--border);background:#030604;height:280px;overflow:hidden}
+  .grid{position:absolute;inset:0;
+    background-image:linear-gradient(rgba(57,255,20,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(57,255,20,.07) 1px,transparent 1px);
+    background-size:28px 28px;}
+  .radar{position:absolute;left:50%;top:50%;width:220px;height:220px;transform:translate(-50%,-50%);border-radius:50%;
+    border:1px solid rgba(57,255,20,.35);
+    background:repeating-radial-gradient(circle,rgba(57,255,20,.10) 0 1px,transparent 1px 36px);}
+  .radar::before{content:'';position:absolute;inset:0;border-radius:50%;
+    background:conic-gradient(from 0deg,rgba(57,255,20,.55),transparent 70deg);
+    animation:sweep 2.2s linear infinite}
+  @keyframes sweep{to{transform:rotate(360deg)}}
+  .pin{position:absolute;left:50%;top:50%;font-size:2.2rem;transform:translate(-50%,-120%) scale(0);filter:drop-shadow(0 0 8px var(--red))}
+  .pin.drop{animation:drop .5s cubic-bezier(.2,2.2,.4,1) forwards}
+  @keyframes drop{to{transform:translate(-50%,-120%) scale(1)}}
+  .coord{position:absolute;left:10px;top:8px;color:var(--green);font-size:1rem;text-shadow:0 0 6px rgba(57,255,20,.5)}
+
+  /* result */
+  #result{display:none;margin-top:18px;border:1px solid var(--red);background:rgba(255,59,59,.06);padding:18px;text-align:center}
+  #result h3{color:var(--red);font-size:1.6rem;letter-spacing:3px;animation:blink 1s infinite}
+  #result .coords{margin-top:8px;font-size:1.2rem;color:var(--text)}
+  #result .acc{color:var(--muted);margin-top:4px}
+
+  #reveal{display:none;margin-top:14px;text-align:center;border:1px dashed var(--border);padding:14px;color:var(--muted);line-height:1.5}
+  #reveal .big{font-size:1.4rem;color:var(--text)}
+  #again{margin-top:10px;background:none;border:1px solid var(--green-dim);color:var(--green);font-family:var(--mono);font-size:1rem;padding:8px 18px;cursor:pointer}
+  #again:hover{border-color:var(--green)}
+
+  /* modal */
+  #overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;z-index:100;padding:16px}
+  .modal{max-width:480px;width:100%;background:var(--panel);border:1px solid var(--red);padding:26px;box-shadow:0 0 40px rgba(255,59,59,.25)}
+  .modal h4{color:var(--red);letter-spacing:2px;font-size:1.35rem;margin-bottom:12px}
+  .modal p{line-height:1.55;font-size:1.05rem;margin-bottom:10px}
+  .modal .small{color:var(--muted);font-size:.95rem}
+  .mbtns{display:flex;gap:12px;margin-top:18px}
+  .mbtns button{flex:1;font-family:var(--mono);font-size:1.1rem;letter-spacing:2px;padding:12px;cursor:pointer}
+  #mCancel{background:none;border:1px solid var(--border);color:var(--muted)}
+  #mCancel:hover{color:var(--text)}
+  #mOk{background:var(--red);border:none;color:#fff;font-weight:bold}
+  #mOk:hover{background:#ff5c5c}
+
+  footer{margin-top:26px;color:var(--muted);font-size:.95rem;line-height:1.5;text-align:center;border-top:1px solid var(--border);padding-top:14px}
+  @media (max-width:520px){
+    .logo{font-size:1.1rem}
+    #phone{font-size:1.2rem}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo"><span class="sig"></span>CELLTRACKER<span style="color:var(--muted)">™</span> PRO</div>
+    <div class="ver">v4.2.1 &nbsp;|&nbsp; NODE-SUL-03</div>
+  </header>
+
+  <div class="banner">
+    <b>⚠ AVISO:</b> ferramenta de <b>SIMULAÇÃO</b> para testes e demonstrações. Utilize <b>apenas em ambientes controlados</b> e com fins educativos/entretenimento. Nenhum rastreamento real é executado.
+  </div>
+
+  <div class="card">
+    <h2>&gt; RASTREAMENTO DE LOCALIZAÇÃO</h2>
+    <div class="sub">Informe o número de telefone do alvo para iniciar a triangulação.</div>
+
+    <div class="inputrow">
+      <input id="phone" type="tel" inputmode="numeric" placeholder="(11) 99999-9999" autocomplete="off" maxlength="15">
+      <button id="go">INICIAR</button>
+    </div>
+    <div class="err" id="err"></div>
+
+    <div id="term"></div>
+
+    <div class="progress" id="prog"><div class="fill" id="fill"></div><div class="pct" id="pct">0%</div></div>
+
+    <div id="mapwrap">
+      <div class="grid"></div>
+      <div class="radar"></div>
+      <div class="coord" id="coord">LAT --.------ &nbsp; LNG --.------</div>
+      <div class="pin" id="pin">📍</div>
+    </div>
+
+    <div id="result">
+      <h3>📍 LOCALIZAÇÃO ENCONTRADA</h3>
+      <div class="coords" id="finalcoord"></div>
+      <div class="acc">Precisão: 2.4m &nbsp;•&nbsp; Fonte: triangulação ERB + GPS assistido</div>
+    </div>
+
+    <div id="reveal">
+      <div class="big">😏 foi só uma brincadeira.</div>
+      Nenhum rastreamento aconteceu — este site é 100% simulado e não consulta nada. Use apenas para trolar em ambientes controlados, nunca para enganar pessoas de boa-fé.<br>
+      <button id="again">RASTREAR OUTRO NÚMERO</button>
+    </div>
+  </div>
+
+  <footer>
+    CellTracker Pro é um projeto de entretenimento / anti-scam bait.<br>
+    Nenhum dado é enviado a servidores. Nenhuma localização é consultada. Tudo acontece apenas no seu navegador.
+  </footer>
+</div>
+
+<!-- MODAL DE NÃO-RESPONSABILIZAÇÃO -->
+<div id="overlay">
+  <div class="modal">
+    <h4>⚠ TERMO DE RESPONSABILIDADE</h4>
+    <p>Esta plataforma deve ser utilizada <b>apenas em ambientes controlados</b>, para fins de simulação, testes e entretenimento.</p>
+    <p><b>Não nos responsabilizamos por qualquer mau uso da plataforma.</b> Ao confirmar, você declara que compreende os riscos e assume total responsabilidade pela utilização desta ferramenta.</p>
+    <p class="small">O rastreamento será iniciado imediatamente após a confirmação.</p>
+    <div class="mbtns">
+      <button id="mCancel">CANCELAR</button>
+      <button id="mOk">CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const phone=document.getElementById('phone');
+  const go=document.getElementById('go');
+  const err=document.getElementById('err');
+  const term=document.getElementById('term');
+  const prog=document.getElementById('prog');
+  const fill=document.getElementById('fill');
+  const pct=document.getElementById('pct');
+  const mapwrap=document.getElementById('mapwrap');
+  const coord=document.getElementById('coord');
+  const pin=document.getElementById('pin');
+  const result=document.getElementById('result');
+  const reveal=document.getElementById('reveal');
+  const overlay=document.getElementById('overlay');
+  const mOk=document.getElementById('mOk');
+  const mCancel=document.getElementById('mCancel');
+  const again=document.getElementById('again');
+
+  const audio=new Audio('assets/gemido-whatsapp.mp3');
+  audio.volume=1.0;
+  let running=false;
+  let timers=[];
+
+  // máscara (11) 99999-9999
+  phone.addEventListener('input',()=>{
+    let d=phone.value.replace(/\D/g,'').slice(0,11);
+    let out='';
+    if(d.length>0) out='('+d.slice(0,2);
+    if(d.length>=3) out+=') '+d.slice(2,7);
+    if(d.length>=8) out+='-'+d.slice(7,11);
+    phone.value=out;
+    err.textContent='';
+  });
+  phone.addEventListener('keydown',e=>{if(e.key==='Enter')go.click();});
+
+  go.addEventListener('click',()=>{
+    if(running)return;
+    const d=phone.value.replace(/\D/g,'');
+    if(d.length<10||d.length>11){
+      err.textContent='[ERRO] Número inválido. Use DDD + número (10 ou 11 dígitos).';
+      phone.focus();
+      return;
+    }
+    overlay.style.display='flex';
+  });
+
+  mCancel.addEventListener('click',()=>{overlay.style.display='none';});
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.style.display='none';});
+
+  mOk.addEventListener('click',()=>{
+    overlay.style.display='none';
+    // destrava o áudio dentro do gesto do usuário (política de autoplay)
+    audio.play().then(()=>{audio.pause();audio.currentTime=0;}).catch(()=>{});
+    startTracking();
+  });
+
+  function sleep(ms){return new Promise(r=>{const t=setTimeout(r,ms);timers.push(t);});}
+
+  function logLine(txt,cls){
+    const div=document.createElement('div');
+    div.className='l '+(cls||'');
+    div.textContent=txt;
+    term.appendChild(div);
+    term.scrollTop=term.scrollHeight;
+    return div;
+  }
+
+  // coordenadas pseudo-aleatórias determinísticas a partir do número
+  function fakeCoords(digits){
+    let h=7;
+    for(const c of digits)h=(h*31+ +c)%1000000000;
+    // mistura mais digitos p/ parecer GPS real (6 casas decimais)
+    const h2=(h*7919+13)%1000000000;
+    const lat=-(1+ (h%3100)/100) - (h2%1000000)/1e6;   // ~ -1 a -32 (Brasil)
+    const lng=-(5+ (Math.floor(h/3100)%7100)/100) - ((h2*3)%1000000)/1e6; // ~ -5 a -76
+    return{lat,lng};
+  }
+
+  async function startTracking(){
+    running=true;
+    go.disabled=true;go.style.opacity=.4;phone.disabled=true;
+    term.style.display='block';term.innerHTML='';
+    prog.style.display='block';
+    mapwrap.style.display='block';
+    result.style.display='none';reveal.style.display='none';
+    pin.classList.remove('drop');
+    coord.textContent='LAT --.------   LNG --.------';
+
+    const digits=phone.value.replace(/\D/g,'');
+    const steps=[
+      ['> estabelecendo handshake com rede GSM........ ','ok','OK'],
+      ['> consultando HLR da operadora................. ','ok','OK'],
+      ['> autorizando no centro de switching (MSC)..... ','ok','OK'],
+      ['> triangulando 3 antenas (ERB) mais próximas... ','wait','..'],
+      ['> handshake com satélite GPS L2C............... ','ok','OK'],
+      ['> calculando delta TDOA entre torres........... ','ok','OK'],
+      ['> decodificando pacotes SS7 (0x4F2A)........... ','wait','..'],
+      ['> aguardando janela de sincronia............... ','wait','..'],
+      ['> corrigindo desvio ionosférico................ ','ok','OK'],
+      ['> precisão estimada: 2.4 metros','dim',''],
+      ['> COMPILANDO POSIÇÃO FINAL...','ok','']
+    ];
+
+    // barra de progresso ~9s com jitter
+    const t0=performance.now(),DUR=9000;
+    function tick(now){
+      const k=Math.min(1,(now-t0)/DUR);
+      const p=Math.min(100,Math.floor(k*100 + Math.sin(k*40)*1.2));
+      fill.style.width=p+'%';pct.textContent=p+'%';
+      if(k<1)requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // contador de coordenadas convergindo
+    const final=fakeCoords(digits);
+    const cInt=setInterval(()=>{
+      const k=Math.min(1,(performance.now()-t0)/DUR);
+      const lat=(final.lat*(0.6+0.4*k)+ (Math.random()-0.5)*(1-k)*2).toFixed(6);
+      const lng=(final.lng*(0.6+0.4*k)+ (Math.random()-0.5)*(1-k)*2).toFixed(6);
+      coord.textContent='LAT '+lat+'   LNG '+lng;
+    },120);
+    timers.push(cInt);
+
+    for(const [txt,cls,suf] of steps){
+      const line=logLine(txt,cls);
+      if(suf){
+        await sleep(250+Math.random()*450);
+        const s=document.createElement('span');
+        s.textContent=suf;
+        if(suf==='OK'){s.style.color='var(--green)';s.style.textShadow='0 0 6px rgba(57,255,20,.6)';}
+        line.appendChild(s);
+      }else{
+        await sleep(180+Math.random()*300);
+      }
+    }
+    const cur=logLine('> aguardando resposta do aparelho','dim');
+    const c=document.createElement('span');c.className='cur';c.textContent=' █';cur.appendChild(c);
+    await sleep(1400);
+
+    // resultado + punchline (áudio)
+    clearInterval(cInt);
+    coord.textContent='LAT '+final.lat.toFixed(6)+'   LNG '+final.lng.toFixed(6);
+    document.getElementById('finalcoord').textContent='LAT '+final.lat.toFixed(6)+'  •  LNG '+final.lng.toFixed(6);
+    pin.classList.add('drop');
+    result.style.display='block';
+    result.scrollIntoView({behavior:'smooth',block:'nearest'});
+    if(navigator.vibrate)navigator.vibrate([180,90,180]);
+
+    try{
+      audio.currentTime=0;
+      await audio.play();
+    }catch(e){
+      err.textContent='[!] toque na tela para ouvir o resultado do rastreamento';
+      term.addEventListener('click',()=>audio.play().catch(()=>{}),{once:true});
+    }
+
+    const rt=setTimeout(()=>{reveal.style.display='block';},6000);
+    timers.push(rt);
+  }
+
+  again.addEventListener('click',reset);
+  function reset(){
+    timers.forEach(t=>{clearTimeout(t);clearInterval(t);});
+    timers=[];
+    audio.pause();audio.currentTime=0;
+    running=false;
+    go.disabled=false;go.style.opacity=1;phone.disabled=false;
+    term.style.display='none';prog.style.display='none';
+    mapwrap.style.display='none';result.style.display='none';reveal.style.display='none';
+    fill.style.width='0%';pct.textContent='0%';
+    phone.value='';phone.focus();
+  }
+})();
+</script>
+</body>
+</html>
