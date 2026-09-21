@@ -26,7 +26,7 @@ python3 -m http.server 8080
 
 ## Deploy
 
-GitHub Pages: <https://daniellucasdev.github.io/rastreador-prank/>
+GitHub Pages: <https://daniellucasdev.github.io/celltracker-pro/>
 
 ---
 Projeto de entretenimento. Não use para assediar, ameaçar ou enganar pessoas.
